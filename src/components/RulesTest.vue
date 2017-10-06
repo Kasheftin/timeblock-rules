@@ -131,7 +131,6 @@ export default {
     },
     processNewRule (rule) {
       const delay = (n) => () => new Promise((resolve, reject) => setTimeout(resolve, n || 1000))
-      console.log('ok, here', rule)
       Promise.resolve()
         .then(() => {
           this.loading = true
@@ -171,7 +170,6 @@ export default {
             })
           }
           events.sort((e1, e2) => e1.week - e2.week)
-          console.log('events', events)
           return events
         })
         .then(events => {
@@ -199,13 +197,14 @@ export default {
             } else {
               if (event.new) {
                 out.push({
-                  new: true,
+                  id: this.getNextIndex(),
                   start_week: newRule.week,
                   end_week: event.week,
                   value: event.value
                 })
                 if (levels.length > 0) {
                   levels[levels.length - 1].week = event.week + 1
+                  levels[levels.length - 1].id = this.getNextIndex()
                 }
                 newRule = undefined
               } else {
@@ -225,7 +224,7 @@ export default {
           })
           if (newRule) {
             out.push({
-              new: true,
+              id: this.getNextIndex(),
               start_week: newRule.week,
               value: newRule.value
             })
@@ -237,7 +236,50 @@ export default {
               value: e.value
             })
           }
-          console.log('Resul: ', out)
+          return out
+        })
+        .then(out => {
+          const outById = {}
+          out.forEach(r => {
+            outById[r.id] = r
+          })
+          for (let i = 0; i < this.rules.length; i++) {
+            const r1 = this.rules[i]
+            const r2 = outById[r1.id]
+            if (r2) {
+              if (r1.start_week !== r2.start_week || r1.end_week !== r2.end_week || r1.value !== r2.value) {
+                console.log('Rule #' + r1.id + ' changed')
+                r1.start_week = r2.start_week
+                r1.end_week = r2.end_week
+                r1.value = r2.value
+              } else {
+                console.log('Rule #' + r1.id + ' - no changes')
+              }
+            } else {
+              console.log('Rule #' + r1.id + ' removed')
+              this.rules.splice(i, 1)
+              i--
+            }
+          }
+          Object.keys(outById).forEach(key => {
+            console.log('New rule #' + key + ' added')
+            this.rules.push(outById[key])
+          })
+          this.notes.push('1. Up/Down process finished')
+        })
+        .then(delay())
+        .then(() => {
+          this.rules.sort((r1, r2) => r1.start_week - r2.start_week)
+          for (let i = 1; i < this.rules.length; i++) {
+            const prev = this.rules[i - 1]
+            const curr = this.rules[i]
+            if (prev.end_week === curr.start_week - 1 && prev.value === curr.value) {
+              prev.end_week = curr.end_week
+              this.rules.splice(i, 1)
+              i--
+            }
+          }
+          this.notes.push('2. Merge consistent rules finished')
         })
         .then(() => {
           this.loading = false
