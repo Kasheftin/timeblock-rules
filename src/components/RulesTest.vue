@@ -159,7 +159,8 @@ export default {
             type: 'up',
             week: rule.start_week,
             new: true,
-            value: rule.value
+            value: rule.value,
+            unlimited: !rule.end_week
           })
           if (rule.end_week) {
             events.push({
@@ -176,7 +177,8 @@ export default {
           const out = []
           const levels = []
           let newRule
-          events.forEach(event => {
+          for (let i = 0; i < events.length; i++) {
+            const event = events[i]
             if (event.type === 'up') {
               if (event.new) {
                 newRule = event
@@ -191,6 +193,7 @@ export default {
                     })
                   }
                 }
+                if (event.unlimited) break
               } else {
                 levels.push(event)
               }
@@ -221,7 +224,7 @@ export default {
                 }
               }
             }
-          })
+          }
           if (newRule) {
             out.push({
               id: this.getNextIndex(),
@@ -239,6 +242,7 @@ export default {
           return out
         })
         .then(out => {
+          console.log('out', out)
           const outById = {}
           out.forEach(r => {
             outById[r.id] = r
@@ -255,6 +259,7 @@ export default {
               } else {
                 console.log('Rule #' + r1.id + ' - no changes')
               }
+              delete outById[r1.id]
             } else {
               console.log('Rule #' + r1.id + ' removed')
               this.rules.splice(i, 1)
