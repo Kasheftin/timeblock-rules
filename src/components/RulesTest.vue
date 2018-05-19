@@ -1,6 +1,6 @@
 <template>
   <div class="container">
-    <h3>Timeblock Rules Test</h3>
+    <h3 class="my-3">Timeblock Rules Test</h3>
     <div class="card mb-3">
       <div class="card-body">
         <h5 class="card-title">Day Of Week</h5>
@@ -21,7 +21,7 @@
         </div>
       </div>
     </div>
-    <h3>Add New Rule</h3>
+    <h3 class="my-3">Add New Rule</h3>
     <div class="alert alert-danger mb-3" v-if="error">{{error}}</div>
     <div class="card mb-3">
       <div class="card-body">
@@ -29,16 +29,16 @@
           <div class="row">
             <div class="col">
               <div class="form-group">
-                <label for="formStartWeek">Start Date</label>
-                <input type="number" class="form-control" id="formStartWeek" min="0" :max="total_weeks" v-model="form.start_week" :readonly="loading">
-                <small class="form-text text-muted">The week of the year only (0 - 50)</small>
+                <label for="formStartWeek">Start Week</label>
+                <input type="number" class="form-control" id="formStartWeek" min="0" :max="total_weeks" v-model="form.from" :readonly="loading">
+                <small class="form-text text-muted">The number between 0 and 50, 0 counts as -infinity</small>
               </div>
             </div>
             <div class="col">
               <div class="form-group">
-                <label for="formEndWeek">End Date</label>
-                <input type="number" class="form-control" id="formEndWeek" min="0" :max="total_weeks" v-model="form.end_week" :readonly="loading">
-                <small class="form-text text-muted">Leave zero for unlimited length, the week number (0 - 50)</small>
+                <label for="formEndWeek">End Week</label>
+                <input type="number" class="form-control" id="formEndWeek" min="0" :max="total_weeks" v-model="form.to" :readonly="loading">
+                <small class="form-text text-muted">The number between 0 and 50, 0 counts as +infinity</small>
               </div>
             </div>
             <div class="w-100"></div>
@@ -69,10 +69,11 @@
 </template>
 
 <script>
+import {processNewRule} from '@/fn/rules'
 
 const formDefaultValues = {
-  start_week: 0,
-  end_week: undefined,
+  from: 0,
+  to: 0,
   value: 'MON'
 }
 
@@ -81,13 +82,13 @@ export default {
     return {
       total_weeks: 50,
       rules: [
-        { id: 1, start_week: 20, end_week: 39, value: 'FRI' },
-        { id: 2, start_week: 40, value: 'WED' }
+        { id: 1, from: 20, to: 39, value: 'FRI' },
+        { id: 2, from: 40, to: null, value: 'WED' }
       ],
       autoincrementIndex: 0,
       form: Object.assign({}, formDefaultValues),
-      error: undefined,
       loading: false,
+      error: null,
       showPreliminary: true,
       notes: []
     }
@@ -100,341 +101,92 @@ export default {
       return ++this.autoincrementIndex
     },
     getRuleStyle (rule) {
+      const from = isNaN(rule.from) ? 0 : Math.floor(rule.from) || 0
+      const to = isNaN(rule.to) ? 0 : Math.floor(rule.to) || 0
       return {
-        left: Math.floor(rule.start_week / this.total_weeks * 100) + '%',
-        width: Math.floor(((rule.end_week === undefined ? (this.total_weeks - 1) : rule.end_week) - rule.start_week + 1) / this.total_weeks * 100) + '%'
+        left: Math.round((from ? from - 1 : 0) / this.total_weeks * 100) + '%',
+        width: Math.round(Math.max(0, (to || this.total_weeks) - (from ? from - 1 : 0)) / this.total_weeks * 100) + '%'
       }
     },
     submit () {
-      this.error = undefined
-      let startWeek, endWeek
-      try {
-        startWeek = Math.floor(this.form.start_week)
-        if (isNaN(startWeek) || startWeek < 0 || startWeek > this.total_weeks) throw new Error('Start week field is incorrect')
-        if (this.form.end_week !== '' && this.form.end_week !== undefined) {
-          endWeek = Math.floor(this.form.end_week)
-          if (isNaN(endWeek) || endWeek < 0 || endWeek > this.total_weeks) throw new Error('End week field is incorrect')
-        }
-        if (startWeek !== undefined && endWeek !== undefined && endWeek < startWeek) throw new Error('End week must be greater than the start week')
-        this.processNewRule({
-          start_week: startWeek,
-          end_week: endWeek,
-          value: this.form.value
+      this.error = null
+      const from = isNaN(this.form.from) ? null : Math.floor(this.form.from) || null
+      const to = isNaN(this.form.to) ? null : Math.floor(this.form.to) || null
+      return Promise.resolve()
+        .then(() => {
+          if (from < 0 || from > this.total_weeks) throw new Error('Start week field is incorrect')
+          if (to < 0 || to > this.total_weeks) throw new Error('End week field is incorrect')
+          if (from > to) throw new Error('End week must be greater than the start week')
         })
-      } catch (e) {
-        this.error = e.message
-      }
+        .then(() => this.processNewRule({
+          from,
+          to,
+          value: this.form.value
+        }))
+        .catch(error => {
+          this.error = error.message
+        })
     },
     reset () {
-      this.form = Object.assign({}, formDefaultValues)
-      this.error = undefined
+      this.error = null
+      this.form = {...formDefaultValues}
     },
     processNewRule (rule) {
+      const newRule = {
+        from: rule.from || null,
+        to: rule.to || null,
+        value: rule.value
+      }
+      const initialRules = this.rules.map(rule => ({
+        id: rule.id,
+        from: rule.from || null,
+        to: rule.to || null,
+        value: rule.value
+      }))
+      const result = processNewRule(newRule, initialRules)
       const delay = (n) => () => new Promise((resolve, reject) => setTimeout(resolve, n || 1000))
-      Promise.resolve()
+      return Promise.resolve()
         .then(() => {
           this.loading = true
           this.notes = []
         })
         .then(delay())
         .then(() => {
-          const events = []
-          this.rules.forEach(r => {
-            events.push({
-              type: 'up',
-              week: r.start_week,
-              id: r.id,
-              value: r.value
-            })
-            if (r.end_week) {
-              events.push({
-                type: 'down',
-                week: r.end_week,
-                id: r.id,
-                value: r.value
-              })
+          const deleteRules = result.filter(rule => rule.type === 'delete')
+          this.notes.push('1. Delete rules count: ' + deleteRules.length)
+          deleteRules.forEach(action => {
+            const index = this.rules.findIndex(rule => rule.id === action.id)
+            if (index === 0 || index > 0) {
+              this.rules.splice(index, 1)
             }
           })
-          events.push({
-            type: 'up',
-            week: rule.start_week,
-            new: true,
-            value: rule.value,
-            unlimited: !rule.end_week
-          })
-          if (rule.end_week) {
-            events.push({
-              type: 'down',
-              week: rule.end_week,
-              new: true,
-              value: rule.value
-            })
-          }
-          events.sort((e1, e2) => e1.week - e2.week)
-          return events
         })
-        .then(events => {
-          const out = []
-          const levels = []
-          let newRule
-          for (let i = 0; i < events.length; i++) {
-            const event = events[i]
-            if (event.type === 'up') {
-              if (event.new) {
-                newRule = event
-                if (levels.length > 0) {
-                  const e = levels[levels.length - 1]
-                  if (e.week <= event.week - 1) {
-                    out.push({
-                      id: e.id,
-                      start_week: e.week,
-                      value: e.value,
-                      end_week: event.week - 1
-                    })
-                  }
-                }
-                if (event.unlimited) break
-              } else {
-                levels.push(event)
-              }
-            } else {
-              if (event.new) {
-                out.push({
-                  id: this.getNextIndex(),
-                  start_week: newRule.week,
-                  end_week: event.week,
-                  value: event.value
-                })
-                if (levels.length > 0) {
-                  levels[levels.length - 1].week = event.week + 1
-                  levels[levels.length - 1].id = this.getNextIndex()
-                }
-                newRule = undefined
-              } else {
-                if (levels.length > 0) {
-                  const e = levels.pop()
-                  if (!newRule && e.week <= event.week) {
-                    out.push({
-                      id: e.id,
-                      start_week: e.week,
-                      value: e.value,
-                      end_week: event.week
-                    })
-                  }
-                }
-              }
+        .then(delay())
+        .then(() => {
+          const updateRules = result.filter(rule => rule.type === 'update')
+          this.notes.push('2. Update rules count: ' + updateRules.length)
+          updateRules.forEach(action => {
+            const rule = this.rules.find(rule => rule.id === action.id)
+            if (rule) {
+              Object.assign(rule, action.data)
             }
-          }
-          if (newRule) {
-            out.push({
+          })
+        })
+        .then(delay())
+        .then(() => {
+          const insertRules = result.filter(rule => rule.type === 'insert')
+          this.notes.push('3. Insert rules count: ' + insertRules.length)
+          insertRules.forEach(action => {
+            this.rules.push({
               id: this.getNextIndex(),
-              start_week: newRule.week,
-              value: newRule.value
+              ...action.data
             })
-          } else if (levels.length > 0) {
-            const e = levels.pop()
-            out.push({
-              id: e.id,
-              start_week: e.week,
-              value: e.value
-            })
-          }
-          return out
-        })
-        .then(out => {
-          console.log('out', out)
-          const outById = {}
-          out.forEach(r => {
-            outById[r.id] = r
           })
-          for (let i = 0; i < this.rules.length; i++) {
-            const r1 = this.rules[i]
-            const r2 = outById[r1.id]
-            if (r2) {
-              if (r1.start_week !== r2.start_week || r1.end_week !== r2.end_week || r1.value !== r2.value) {
-                console.log('Rule #' + r1.id + ' changed')
-                r1.start_week = r2.start_week
-                r1.end_week = r2.end_week
-                r1.value = r2.value
-              } else {
-                console.log('Rule #' + r1.id + ' - no changes')
-              }
-              delete outById[r1.id]
-            } else {
-              console.log('Rule #' + r1.id + ' removed')
-              this.rules.splice(i, 1)
-              i--
-            }
-          }
-          Object.keys(outById).forEach(key => {
-            console.log('New rule #' + key + ' added')
-            this.rules.push(outById[key])
-          })
-          this.notes.push('1. Up/Down process finished')
-        })
-        .then(delay())
-        .then(() => {
-          this.rules.sort((r1, r2) => r1.start_week - r2.start_week)
-          for (let i = 1; i < this.rules.length; i++) {
-            const prev = this.rules[i - 1]
-            const curr = this.rules[i]
-            if (prev.end_week === curr.start_week - 1 && prev.value === curr.value) {
-              prev.end_week = curr.end_week
-              this.rules.splice(i, 1)
-              i--
-            }
-          }
-          this.notes.push('2. Merge consistent rules finished')
         })
         .then(() => {
           this.loading = false
         })
     }
-    /*
-    processNewRule (rule) {
-      let rule1, rule2
-      const delay = (n) => () => new Promise((resolve, reject) => setTimeout(resolve, n || 1000))
-      Promise.resolve()
-        .then(() => {
-          this.loading = true
-          this.notes = []
-        })
-        .then(delay())
-        .then(() => {
-          let cnt = 0
-          for (let i = 0; i < this.rules.length; i++) {
-            const r = this.rules[i]
-            if (r.type === rule.type && r.start_week >= rule.start_week && (rule.end_week === undefined || (rule.end_week !== undefined && r.end_week !== undefined && r.end_week <= rule.end_week))) {
-              r.highlighted = true
-              cnt++
-            }
-          }
-          this.notes.push('1. Select all rules that are covered by the new rule - ' + cnt + ' rules selected')
-        })
-        .then(delay())
-        .then(() => {
-          let cnt = 0
-          for (let i = this.rules.length - 1; i >= 0; i--) {
-            const r = this.rules[i]
-            if (r.highlighted) {
-              this.rules.splice(i, 1)
-              cnt++
-            }
-          }
-          this.notes.push('2. Delete covered rules - ' + cnt + ' rules deleted')
-        })
-        .then(delay())
-        .then(() => {
-          rule1 = this.rules.find(r => r.type === rule.type && r.start_week <= rule.start_week && (r.end_week === undefined || r.end_week >= rule.start_week))
-          if (rule1) {
-            rule1.highlighted = true
-          }
-          this.notes.push('3. Select the rule1 that covers new rule start_week - ' + (rule1 ? 'found #' + rule1.id + ' [' + rule1.start_week + ',' + rule1.end_week + ']' : 'not found'))
-        })
-        .then(delay())
-        .then(() => {
-          if (rule.end_week === undefined) {
-            rule2 = this.rules.find(r => r.type === rule.type && r.end_week === undefined)
-          } else {
-            rule2 = this.rules.find(r => r.type === rule.type && r.start_week <= rule.end_week && (r.end_week === undefined || r.end_week >= rule.end_week))
-          }
-          if (rule2) {
-            rule2.highlighted = true
-          }
-          this.notes.push('4. Select the rule2 that covers new rule end_week - ' + (rule2 ? 'found #' + rule2.id + ' [' + rule2.start_week + ',' + rule2.end_week + ']' : 'not found'))
-        })
-        .then(delay())
-        .then(() => {
-          let clonedRule1
-          if (rule1 && rule.end_week !== undefined) {
-            if (rule1.end_week === undefined || rule1.end_week > rule.end_week) {
-              clonedRule1 = Object.assign({}, rule1)
-              clonedRule1.id = this.getNextIndex()
-              clonedRule1.start_week = rule.end_week + 1
-              this.rules.push(clonedRule1)
-            }
-          }
-          this.notes.push('5. Check if rule1.end_week is after the rule.end_week and clone it after rule.end_week - ' + (clonedRule1 ? 'cloned #' + clonedRule1.id + ' [' + clonedRule1.start_week + ',' + clonedRule1.end_week + ']' : 'no cloned rule'))
-        })
-        .then(delay())
-        .then(() => {
-          let result = 'rule1 does not exist'
-          if (rule1) {
-            if (rule1.start_week < rule.start_week) {
-              rule1.end_week = rule.start_week - 1
-              result = ' end_week set to ' + rule1.end_week
-            } else if (rule1.start_week === rule.start_week) {
-              const index = this.rules.findIndex(rule => rule.id === rule1.id)
-              if (index === 0 || index > 0) {
-                this.rules.splice(index, 1)
-                result = 'rule1 deleted'
-              }
-            }
-          }
-          this.notes.push('6. Move the end of the rule1 to be before the rule.start_week - ' + result)
-        })
-        .then(delay())
-        .then(() => {
-          let result = 'rule2 does not exist'
-          if (rule2) {
-            result = 'rule2 is equal to rule1, no change'
-            if (!rule1 || rule2 !== rule1) {
-              result = 'no change in rule2'
-              if (rule.end_week !== undefined && rule2.start_week <= rule.end_week) {
-                rule2.start_week = rule.end_week + 1
-                result = 'start_week set to ' + rule2.start_week
-                if (rule2.start_week > rule2.end_week) {
-                  const index = this.rules.findIndex(rule => rule.id === rule2.id)
-                  if (index === 0 || index > 0) {
-                    this.rules.splice(index, 1)
-                    result = 'rule2 deleted'
-                  }
-                }
-              }
-            }
-          }
-          this.notes.push('7. Move the begining of rule2 to be after rule.end_week - ' + result)
-        })
-        .then(delay())
-        .then(() => {
-          rule.id = this.getNextIndex()
-          this.rules.push(rule)
-          this.notes.push('8. Create new rule - #' + rule.id + ' [' + rule.start_week + ',' + rule.end_week + ']')
-        })
-        .then(delay())
-        .then(() => {
-          this.notes.push('9. Merge consistent rules')
-          this.rules.sort((r1, r2) => r1.start_week - r2.start_week)
-          this.types.forEach(type => {
-            const rules = this.rules.filter(rule => rule.type === type.id)
-            for (let i = 1; i < rules.length; i++) {
-              const prev = rules[i - 1]
-              const curr = rules[i]
-              if (prev.end_week === curr.start_week - 1 && this.valuesEqual(prev, curr)) {
-                prev.end_week = curr.end_week
-                const index = this.rules.findIndex(rule => rule.id === curr.id)
-                if (index === 0 || index > 0) {
-                  this.rules.splice(index, 1)
-                  rules.splice(i, 1)
-                  i--
-                }
-              }
-            }
-          })
-        })
-        .then(delay())
-        .then(() => {
-          this.notes.push('10. Complete')
-        })
-        .then(delay())
-        .then(() => {
-          this.rules.forEach(rule => {
-            rule.highlighted = false
-          })
-          this.loading = false
-        })
-    }
-    */
   }
 }
 </script>
@@ -443,11 +195,12 @@ export default {
 .card-body
   padding 0.5rem
 .bar
-  height 30px
+  height 40px
   position relative
+  overflow hidden
   &-grid
     position absolute
-    top 0
+    top 10px
     right 0
     bottom 0
     left 0
@@ -460,7 +213,7 @@ export default {
         border-left-width 1px
   &-content
     position absolute
-    top 0
+    top 10px
     right 0
     bottom 0
     left 0
@@ -479,7 +232,7 @@ export default {
       text-align center
       transition all 0.5s
   &-rule.-preliminary
-    top -10px
+    top 0
     bottom auto
     .bar-rule-inner
       height 4px
