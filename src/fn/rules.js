@@ -51,12 +51,23 @@ const processNewRule = (newRule, initialRules, debug) => {
   // 2. If there're no rules, return new rule insert;
   if (rules.length === 0) return [{type: 'insert', data: newRule}]
   const firstRule = rules[0]
+  const secondRule = rules[1]
   const lastRule = rules[rules.length - 1]
   // 3. Check if initialRules array consists of one rule that strictly covers newRule entirely;
   if (compareFrom(newRule.from, firstRule.from) > 0 && compareTo(newRule.to, firstRule.to) < 0) {
     if (compareValue(newRule.value, firstRule.value)) return []
     return [{type: 'update', id: firstRule.id, data: {to: newRule.from - 1}}, {type: 'insert', data: newRule}, {type: 'insert', data: {from: newRule.to + 1, to: firstRule.to, value: firstRule.value}}]
   }
+  // 4. Check if first or second rule exactly matches the newRule;
+  if (compareFrom(newRule.from, firstRule.from) === 0 && compareTo(newRule.to, firstRule.to) === 0) {
+    if (compareValue(newRule.value, firstRule.value)) return []
+    // return [{type: 'update', id: firstRule.id, data: {value: newRule.value}}]
+  }
+  if (rules.length > 1 && compareFrom(newRule.from, secondRule.from) === 0 && compareTo(newRule.to, secondRule.to) === 0) {
+    if (compareValue(newRule.value, secondRule.value)) return []
+    // return [{type: 'update', id: secondRule.id, data: {value: newRule.value}}]
+  }
+
   const out = []
   if (compareFrom(newRule.from, firstRule.from) > 0) {
     if (compareValue(newRule.value, firstRule.value)) {

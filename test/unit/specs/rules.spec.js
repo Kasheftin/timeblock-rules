@@ -68,4 +68,10 @@ describe('processNewRule', () => {
   it('should just work 2', () => {
     expect(processNewRule({from: 201801, to: 201806, value: 3}, someInitialRules)).to.deep.equal([{type: 'delete', id: 1}, {type: 'update', id: 2, data: {from: 201807}}, {type: 'insert', data: {from: 201801, to: 201806, value: 3}}])
   })
+  it('should not do anything if the new rule is exact the old one', () => {
+    expect(processNewRule({from: 201806, to: 201821, value: 1}, someInitialRules)).to.deep.equal([])
+  })
+  it('should delete all and add one big rule if it covers the middle rule, and before and after values match newRule value', () => {
+    expect(processNewRule({from: 201806, to: 201821, value: 2}, someInitialRules)).to.deep.equal([{type: 'delete', id: 1}, {type: 'delete', id: 2}, {type: 'delete', id: 3}, {type: 'insert', data: {from: 201801, to: null, value: 2}}])
+  })
 })
